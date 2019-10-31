@@ -23,30 +23,39 @@ N.B. For the fun of it, I threw in data from 3 different languages: 1) Danish (s
 
 In this assignment (A3), you will have to discuss a few important questions (given the data you have). More details below.
 
-Part 1 - Can we find a difference in acoustic features in schizophrenia?
-- Describe your sample (n of studies, n of participants, age, gender, clinical and cognitive features of the two groups) and critically assess whether the groups (schizophrenia and controls) are balanced. N.B. you need to take studies into account.
-- Discuss the analysis necessary to replicate the meta-analytic findings: which fixed and random effects should be included, given your dataset? E.g. what about language and study, age and gender? Discuss also how studies and languages should play a role in your analyses. E.g. should you analyze each study individually? Or each language individually? Or all together? Each of these choices makes some assumptions about how similar you expect the studies/languages to be.
-- Describe the acoustic profile of a schizophrenic voice: which features are different? E.g. People with schizophrenia tend to have high-pitched voice, and present bigger swings in their prosody than controls. N.B. look also at effect sizes. How do these findings relate to the meta-analytic findings?
-- Your report should look like a methods paragraph followed by a result paragraph in a typical article (think the Communication and Cognition paper)
+*Part 1 - Can we find a difference in acoustic features in schizophrenia?*
+1) Describe your sample 
+number of studies, number of participants, age, gender, clinical and cognitive features of the two groups. Furthemore, critically assess whether the groups (schizophrenia and controls) are balanced. N.B. you need to take studies into account.
 
 
-Part 2 - Can we diagnose schizophrenia from voice only?
+2) Describe the acoustic profile of a schizophrenic voice: which features are different?
+E.g. People with schizophrenia tend to have high-pitched voice, and present bigger swings in their prosody than controls. N.B. look also at effect sizes. How do these findings relate to the meta-analytic findings?
 
-- Should you run the analysis on all studies and both languages at the same time? 
-- Choose your best acoustic feature from part 1. How well can you diagnose schizophrenia just using it?
-- Identify the best combination of acoustic features to diagnose schizophrenia using logistic regression.
-- Discuss the "classification" process: which methods are you using? Which confounds should you be aware of? What are the strength and limitation of the analysis?
+3) Discuss the analysis necessary to replicate the meta-analytic findings
+Look at the results reported in the paper (see meta-analysis in the readings) and see whether they are similar to those you get.
+    3.1) Check whether significance and direction of the effects are similar
+    3.2) Standardize your outcome, run the model and check whether the beta's is roughly matched (matched with hedge's g)
+which fixed and random effects should be included, given your dataset? E.g. what about language and study, age and gender? Discuss also how studies and languages should play a role in your analyses. E.g. should you analyze each study individually? Or each language individually? Or all together? Each of these choices makes some assumptions about how similar you expect the studies/languages to be.
+*Note* that there is no formal definition of replication (in statistical terms).
+
+
+Your report should look like a methods paragraph followed by a result paragraph in a typical article (think the Communication and Cognition paper)
+
+*Part 2 - Can we diagnose schizophrenia from voice only?*
+1) Discuss whether you should you run the analysis on all studies and both languages at the same time
+You might want to support your results either by your own findings or by that of others
+2) Choose your best acoustic feature from part 1. How well can you diagnose schizophrenia just using it?
+3) Identify the best combination of acoustic features to diagnose schizophrenia using logistic regression.
+4) Discuss the "classification" process: which methods are you using? Which confounds should you be aware of? What are the strength and limitation of the analysis?
 
 Bonus question: Logistic regression is only one of many classification algorithms. Try using others and compare performance. Some examples: Discriminant Function, Random Forest, Support Vector Machine, Penalized regression, etc. The packages caret and glmnet provide them. Tidymodels is a set of tidyverse style packages, which take some time to learn, but provides a great workflow for machine learning.
 
 ## Learning objectives
-
 - Critically design, fit and report multilevel regression models in complex settings
 - Critically appraise issues of replication
 
 
 ## Overview of part 1
-
 In the course of this part 1 of Assignment 3 you have to:
 - combine the different information from multiple files into one meaningful dataset you can use for your analysis. This involves: extracting descriptors of acoustic features from each pitch file (e.g. mean/median, standard deviation / interquartile range), and combine them with duration and demographic/clinical files
 - describe and discuss your sample
@@ -84,7 +93,7 @@ There are three pieces of data:
 - f0: a measure of fundamental frequency, in Herz
 
 NB. the filenames indicate:
-- Study: the study, 1-6 (1-4 in Danish, 5-6 in Mandarin Chinese, 7 in Japanese)
+- Study: the study, 1-6 (1-4 in Danish, 5-6 in Mandarin Chinese)
 - D: the diagnosis, 0 is control, 1 is schizophrenia
 - S: the subject ID (NB. some controls and schizophrenia are matched, so there is a 101 schizophrenic and a 101 control). Also note that study 5-6 have weird numbers and no matched participants, so feel free to add e.g. 1000 to the participant ID in those studies.
 - T: the trial, that is, the recording ID for that participant, 1-10 (note that study 5-6 have more)
@@ -99,7 +108,7 @@ Tip: Load one file (as a sample) and:
 Only then (when everything works) turn the code into a function and use map_df() to apply it to all the files.
 See placeholder code here for help.
 
-```{r message = F}
+```{r}
 library(pacman)
 p_load(tidyverse)
 
@@ -131,6 +140,7 @@ pitch_data <- list.files(path = "Pitch/",pattern = ".txt") %>% purrr::map_df(rea
  
 # Writing csv
 write_csv(pitch_data, "pitch_data.csv")
+
 ```
 
 
@@ -189,16 +199,20 @@ df$UniquePair <- as.integer(as.factor(df$UniquePair))
 
 # Now we save them
 write_csv(df, "A3_data_merged.csv")
+
 ```
 
 ## Now we need to describe our sample
 
 First look at the missing data: we should exclude all recordings for which we do not have complete data.
-Then count the participants and recordings by diagnosis, report their gender, age and symptom severity (SANS, SAPS and Social)
+Then count the participants and recordinsgs by diagnosis, report their gender, age and symptom severity (SANS, SAPS and Social)
 Finally, do the same by diagnosis and study, to assess systematic differences in studies.
 I like to use group_by() %>% summarize() for quick summaries
 
 ```{r}
+# Subsetting the studies of interest (keeping the Danish studies)
+df <- subset(df, Language == "Danish")
+
 # Changing the name of variables to make them sensible
 colnames(df)[14] <- "PitchMean"
 colnames(df)[15] <- "PitchIQR"
@@ -228,8 +242,8 @@ df %>%
   )
 
 # Describing the sample by diagnosis and study
-df %>% 
-  group_by(Diagnosis, Study) %>% 
+df%>% 
+  group_by(Study, Diagnosis) %>% 
   summarise(N = n(),
   mAGE = mean(Age, na.rm = T),
   sdAGE = sd(Age, na.rm = T),
@@ -250,24 +264,19 @@ df %>%
   mPitchSD = mean(PitchSD, na.rm = T)
   )
 
-# On the basis of this, we will remove study 7 (because of many NAs), and the data, which does not have any study or diagnosis (is within study 7).
-df <-
-  df %>%
-  filter(Study != 7)
-
-# Filter both removes the rows with study 7 and NA in rows.
-
 ```
 
 ## Now we can analyze the data
-
-If we look at the meta-analysis, there are differences (measured as Hedges' g, very close to Cohen's d, that is, in standard deviations) in
+If you were to examine the meta analysis you would find that the differences (measured as Hedges' g, very close to Cohen's d, that is, in standard deviations) to be the following
 - pitch variability (lower, Hedges' g: -0.55, 95% CIs: -1.06, 0.09)
 - proportion of spoken time (lower, Hedges' g: -1.26, 95% CIs: -2.26, 0.25)
 - speech rate (slower, Hedges' g: -0.75, 95% CIs: -1.51, 0.04)
 - pause duration (longer, Hedges' g: 1.89, 95% CIs: 0.72, 3.21). (Duration - Spoken Duration) / PauseN
 
-We need therefore to set up 4 models to replicate the findings. Feel free of course to test more features.
+We need therefore to set up 4 models to see how well our results compare to the meta-analytic findings (Feel free of course to test more features)
+
+Describe the acoustic profile of a schizophrenic voice
+*Note* in this section you need to describe the acoustic profile of a schizophrenic voice and compare it with the meta-analytic findings (see 2 and 3 in overview of part 1).
 
 N.B. the meta-analytic findings are on scaled measures. If you want to compare your results with them, you need to scale your measures as well: subtract the mean, and divide by the standard deviation.
 N.N.B. We want to think carefully about fixed and random effects in our model. In particular: how should study be included? Does it make sense to have all studies put together? Does it make sense to analyze both languages together? Relatedly: does it make sense to scale all data from all studies together?
@@ -276,7 +285,16 @@ N.N.N.B. If you want to estimate the studies separately, you can try this syntax
 - Bonus points: cross-validate the models and report the betas and standard errors from all rounds to get an idea of how robust the estimates are. 
 
 ```{r}
-# Scaling
+  # set.seed(1)
+  # x <- runif(7)
+
+   # Manually scaling
+  # (x - mean(x)) / sd(x)
+
+  # scale(x)
+   
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Scaling (by hand - but can be done more esay by using the scale() function)
 df$ScaledPitchIQR <- (df$PitchIQR-mean(df$PitchIQR, na.rm = T))/sd(df$PitchIQR, na.rm = T)
 
 df$ScaledSpokenProb <- ((df$`phonationtime (s)`/df$`dur (s)`) - mean(df$`phonationtime (s)`/df$`dur (s)`, na.rm=T))/sd((df$`phonationtime (s)`/df$`dur (s)`), na.rm=T)
@@ -289,34 +307,79 @@ which(df$npause == NA) # There are no NAs, so we can change 0s to NA, and then N
 # Changing 0s in npause to NAs (we cannot divide by 0)
 df$npause[df$npause == 0] <- NA
 
-# ls.str(df)
 df$ScaledPauseDur <- (((df$`dur (s)`-df$`phonationtime (s)`)/df$npause) - mean((df$`dur (s)`-df$`phonationtime (s)`)/df$npause, na.rm = T)) / sd((df$`dur (s)`-df$`phonationtime (s)`)/df$npause, na.rm = T)
 
-df$npause[is.na(df$npause)] <- "0"
-df$ScaledPauseDur[is.na(df$ScaledPauseDur)] <- "0"
-
-# Setting pause duration to 0, when 
+df$npause[is.na(df$npause)] <- 0
+df$ScaledPauseDur[is.na(df$ScaledPauseDur)] <- 0
 
 # Loading package
 p_load(lmerTest)
 
+# Filtering data without NAs in the four rows of interest
+# df <- filter(df, !is.na(ScaledPitchIQR) & !is.na(ScaledSpokenProb) & !is.na(ScaledSpeechRate) & !is.na(ScaledPauseDur))
+
 # Making models
-m1 <- lmer(ScaledPitchIQR ~ Diagnosis + (1 + Diagnosis|UniquePair), data = df, REML = F, lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m1 <- lmer(ScaledPitchIQR ~ Diagnosis + (1 |UniqueID), data = df, REML = F, lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
 summary(m1)
 
+m1_pair <- lmer(ScaledPitchIQR ~ Diagnosis + (1 + Diagnosis|UniquePair), data = df, REML = F, lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+summary(m1_pair)
 
+# These models give beta estimates of around -0.20/-0.21, which indicates that pitch variability is lower in people diagnosed with schizophrenia than the controls. That is, they speak in a more monotone voice. That is, a significant effect in the same direction as the effect reported in the meta-analysis (paper) - roughly compared to Hedges' g, it looks similar, and is within its confidence interval.
+
+m2 <- lmer(ScaledSpokenProb ~ Diagnosis + (1 |UniqueID), data = df, REML = F, lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+summary(m2)
+
+m2_pair <- lmer(ScaledSpokenProb ~ Diagnosis + (1 + Diagnosis|UniquePair), data = df, REML = F, lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+summary(m2_pair)
+
+# These models give beta estimates of 0.04 and 0.01, which indicates that the proportion of spoken time is a tiny bit bigger when people diagnosed with schizophrenia talk, compared to controls. However, these effects are very small, not significant and in the opposite direction of the effect reported in the meta-analysis (paper). Meaning that the results do not compare well with the significant negative effect of the paper (can be seen as indicated in the CI which crosses 0 as well in the paper).
+
+m3 <- lmer(ScaledSpeechRate ~ Diagnosis + (1 |UniqueID), data = df, REML = F, lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+summary(m3)
+
+m3_pair <- lmer(ScaledSpeechRate ~ Diagnosis + (1 + Diagnosis|UniquePair), data = df, REML = F, lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+summary(m3_pair)
+
+# These models give beta estimates of respectively -0.13 and -0.14, which indicates that speech rate is slower in people diagnosed with schizophrenia than in controls. That is, they speak more slowly. When taking individual differences into account, there is no significant effect. However, when looking at the matched pairs individually, the effect is significant, like the one in the paper. No matter significance, both estimates are in the same direction as the effect reported in the paper - and within it's confidence interval.
+
+m4 <- lmer(ScaledPauseDur ~ Diagnosis + (1 |UniqueID), data = df, REML = F, lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+summary(m4)
+
+m4_pair <- lmer(ScaledPauseDur ~ Diagnosis + (1 + Diagnosis|UniquePair), data = df, REML = F, lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+summary(m4_pair)
+
+# These models give beta estimates of 0.14, which indicates that the duration of pauses when people diagnosed with schizophrenia speak, is a bit longer compared to controls. The effect is significant, and in the same direction as the reported Hedges's g - it is, however, smaller and outside the confidence intervals.
+
+# Choosing the best model
+# Since the variables above are scaled, we can compare the beta-values. The best model being the model which has the greatest absolute value (and does not cross 0, when the standard errors are taken into account).
+# That is, m1 with an estimate of -0.21 (SE = 0.09). So, the feature (of these four), which is described the best by diagnosis, is pitch variability (IQR as measure for this).
 
 ```
 
 ## N.B. Remember to save the acoustic features of voice in a separate file, so to be able to load them next time
+```{r}
+# Saving the features in a separate file
+write_csv(df, "data_af")
+```
 
 
 ## Reminder of the report to write 
 
 Part 1 - Can we find a difference in acoustic features in schizophrenia?
-- Describe your sample (n of studies, n of participants, age, gender, clinical and cognitive features of the two groups) and critically assess whether the groups (schizophrenia and controls) are balanced. N.B. you need to take studies into account.
-- Discuss the analysis necessary to replicate the meta-analytic findings: which fixed and random effects should be included, given your dataset? E.g. what about language and study, age and gender? Discuss also how studies and languages should play a role in your analyses. E.g. should you analyze each study individually? Or each language individually? Or all together? Each of these choices makes some assumptions about how similar you expect the studies/languages to be.
-- Describe the acoustic profile of a schizophrenic voice: which features are different? E.g. People with schizophrenia tend to have high-pitched voice, and present bigger swings in their prosody than controls. N.B. look also at effect sizes. How do these findings relate to the meta-analytic findings?
+
+1) Describe your sample 
+number of studies, number of participants, age, gender, clinical and cognitive features of the two groups. Furthemore, critically assess whether the groups (schizophrenia and controls) are balanced. N.B. you need to take studies into account.
+
+
+2) Describe the acoustic profile of a schizophrenic voice: which features are different?
+E.g. People with schizophrenia tend to have high-pitched voice, and present bigger swings in their prosody than controls. N.B. look also at effect sizes. How do these findings relate to the meta-analytic findings?
+
+3) Discuss the analysis necessary to replicate the meta-analytic findings
+Look at the results reported in the paper (see meta-analysis in the readings) and see whether they are similar to those you get.
+    3.1) Check whether significance and direction of the effects are similar
+    3.2) Standardize your outcome, run the model and check whether the beta's is roughly matched (matched with hedge's g)
+which fixed and random effects should be included, given your dataset? E.g. what about language and study, age and gender? Discuss also how studies and languages should play a role in your analyses. E.g. should you analyze each study individually? Or each language individually? Or all together? Each of these choices makes some assumptions about how similar you expect the studies/languages to be.
+
+
 - Your report should look like a methods paragraph followed by a result paragraph in a typical article (think the Communication and Cognition paper)
-
-

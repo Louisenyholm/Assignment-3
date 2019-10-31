@@ -1,8 +1,10 @@
 ---
 title: "Assignment 3 - Part 2 - Diagnosing Schizophrenia from Voice"
-author: "Riccardo Fusaroli"
-date: "October 17, 2017"
-output: html_document
+author: "Anna, Malte, Oliver & Louise"
+date: "08-10-2019"
+output:   
+  md_document:
+    variant: markdown_github
 ---
 
 ```{r setup, include=FALSE}
@@ -44,8 +46,214 @@ N.N.N.N.B. A more advanced solution could rely on the tidymodels set of packages
 
 
 ```{r}
+# Loading packages
+library(pacman)
+p_load(tidyverse, tidymodels, groupdata2)
 
+# Loading data from part 1
+data <- read_csv("data_af")
 
+# Subsetting the Danish studies ## FJERN
+data <- subset(data, Language == "Danish")
+
+# Changing diagnosis to be a factor
+data$Diagnosis <- as.factor(data$Diagnosis)
+
+# Removing rows with NAs in the four columns of interest
+data <- filter(data, !is.na(ScaledPitchIQR))
+data <- filter(data, !is.na(ScaledSpokenProb))
+data <- filter(data, !is.na(ScaledSpeechRate))
+data <- filter(data, !is.na(ScaledPauseDur))
+
+# Setting seed
+set.seed(69)
+
+# Partitioning the data (making sure, that the matched pairs are represented in the same data set)
+data_list <- partition(data, p = 0.2, cat_col = c("Diagnosis"), id_col = "UniquePair", list_out = T)
+
+df_test <- data_list[[1]]
+df_train = data_list[[2]]
+
+# Defining "recipe" for preprocessing of the data
+# Creating recipe
+rec <- df_train %>%
+  recipe(Diagnosis ~ ScaledPitchIQR + ScaledSpokenProb + ScaledSpeechRate + ScaledPauseDur) %>% # defines the outcome and predictor(s)
+  step_center(all_numeric()) %>% # centers numeric predictors
+  step_corr(all_numeric()) %>% # removes variables with large correlations with other variables
+  check_missing(everything()) %>% # Checking for NAs
+  prep(training = df_train)
+
+# BURDE VI SCALE HERI? SÅ DEN BLIVER SCALED TIL DET DATA, DER ER I DET DATA SET (TRAIN/TEST) ELLER BEHOLDE SOM DET ER NU, HVOR DET ER SCALED PÅ BAGGRUND AF AL DATAEN?
+
+# Looking at the ouput and the operations performed
+rec
+
+# Extracting the relevant data (predictor and outcome variables) from training set
+train_baked <- juice(rec)
+```
+
+```{r}
+# Applying recipe (which was used for training data) to test data (the training data has already been prepped)
+test_baked <- rec %>%
+  bake(df_test)
+```
+
+```{r}
+# Creating models
+
+# Logistic regression in tidymodels
+log_fit <- 
+  logistic_reg() %>%
+  set_mode("classification") %>% 
+  set_engine("glm") %>%
+  fit(Diagnosis ~ ScaledPitchIQR + ScaledSpokenProb + ScaledSpeechRate + ScaledPauseDur, data = train_baked)
+
+# Logistic regression in tidymodels
+# log_fit <- 
+  # logistic_reg() %>%
+  # set_mode("classification") %>% 
+  # set_engine("glm") %>%
+  # fit(Diagnosis ~ ScaledSpeechRate + ScaledPitchIQR, data = train_baked)
+```
+
+```{r}
+# Applying model to test set
+
+# Getting probability of class
+log_prob <- log_fit %>%
+  predict(new_data = test_baked, type = "prob") %>% # Specifying the output to be in probabilities
+  pull(.pred_1) # Pulling the probabilities of being diagnosed (contrary to control = .pred_0)
+
+# Predicting class
+log_class <- log_fit %>%
+  predict(new_data = test_baked) # Makes the output the default - the classifications which we predict.
+
+# Combining the actual diagnoses, probabilities of diagnose/control and predictions of the classifications.
+test_results <- 
+  test_baked %>% 
+  select(Diagnosis) %>% 
+  mutate(
+    log_class = predict(log_fit, new_data = test_baked) %>% 
+      pull(.pred_class),
+    log_prob  = predict(log_fit, new_data = test_baked, type = "prob") %>% 
+      pull(.pred_1)
+  )
+
+# Examining the first 10
+test_results %>% 
+  head(10)
+```
+
+```{r}
+# Performance metrics
+# full_eval <-
+#   as_tibble(bind_rows(
+#             metrics(test_results, truth = Diagnosis, estimate = log_class), # Defining "Diagnosis" as the actual results and log_class as the predicted results - accuracy and kappa
+#             ppv(test_results, truth = Diagnosis, estimate = log_class), # Positive predicted value
+#             npv(test_results, truth = Diagnosis, estimate = log_class), # Negative predicted value
+#             sens(test_results, truth = Diagnosis, estimate = log_class), # Sensitivity
+#             spec(test_results, truth = Diagnosis, estimate = log_class))) # Specificity
+
+multimetric <- metric_set(accuracy, bal_accuracy, sens, spec, ppv, npv, kap) # Defining interesting performance metrics
+full_eval <- bind_rows(
+  multimetric(bind_cols(test_baked, test_results), truth = Diagnosis, estimate = log_class),
+  roc_auc(test_results, truth = Diagnosis, log_prob))
+
+# Plotting the roc curve:
+test_results %>%
+  roc_curve(truth = Diagnosis, log_prob) %>% # Defining "Diagnosis" as the actual results, while log_prob are the probabilities of a certain classification.
+  autoplot() # Plots the curve
+
+# Side note to myself: It is one of the most important evaluation metrics for checking any classification model’s performance. The area under the curve (AUC) tells how much model is capable of distinguishing between classes. The higher the AUC, better the model is at predicting 0s as 0s and 1s as 1s.
+# https://towardsdatascience.com/understanding-auc-roc-curve-68b2303cc9c5
+
+# Plotting a gain curve
+test_results %>% 
+  mutate(log_prob = 1 - log_prob) %>% # for the plot to show correctly (otherwise the line would be flipped)
+  gain_curve(truth = Diagnosis, log_prob) %>% 
+  autoplot()
+
+```
+```{r}
+# Multiple cross validation
+# Setting seed
+set.seed(69)
+
+# Creating 10 folds, 10 times, and making sure that Diagnosis is balanced across groups
+cv_folds <- vfold_cv(df_train, v = 10, repeats = 10, strata = Diagnosis, group = UniquePair)
+
+# Preparing data set and fetch train data
+cv_folds <- cv_folds %>% 
+  mutate(recipes = splits %>%
+           # prepper is a wrapper for `prep()` which handles `split` objects
+           map(prepper, recipe = rec),
+         train_data = splits %>% map(training))
+
+# Training a model of each fold
+
+# Creating a non-fitted model
+log_fit <- 
+  logistic_reg() %>%
+  set_mode("classification") %>% 
+  set_engine("glm") 
+
+cv_folds <- cv_folds %>%  mutate(
+  log_fits = pmap(list(recipes, train_data), #input 
+                            ~ fit(log_fit, formula(.x), data = bake(object = .x, new_data = .y)) # function to apply
+                 ))
+
+# Looking at the output
+cv_folds %>% head(5)
+
+# Defining a function to predict (resulting in tibble of actual and predicted results)
+predict_log <- function(split, rec, model) {
+  # IN
+    # split: a split data
+    # rec: recipe to prepare the data
+    # model
+  # OUT
+    # a tibble of the actual and predicted results
+  baked_test <- bake(rec, testing(split))
+  tibble(
+    actual = baked_test$Diagnosis,
+    predicted = predict(model, new_data = baked_test) %>% pull(.pred_class),
+    prob_scz =  predict(model, new_data = baked_test, type = "prob") %>% pull(.pred_1),
+    prob_control =  predict(model, new_data = baked_test, type = "prob") %>% pull(.pred_0)
+  ) 
+}
+
+# Applying the function to each split, with their respective recipes and models (in this case log fits) and save it to a new col
+cv_folds <- cv_folds %>% 
+  mutate(pred = pmap(list(splits, recipes, log_fits) , predict_log))
+```
+
+```{r}
+# Performance Metrics
+eval <- 
+  cv_folds %>% 
+  mutate(metrics = pmap(list(pred), ~ multimetric(., truth = actual, estimate = predicted, prob_scz))) %>% 
+  select(id, id2, metrics) %>% 
+  unnest(metrics)
+
+cv_folds %>% 
+  mutate(roc = pmap(list(pred), roc_curve, truth = actual, prob_scz)) %>% 
+  unnest(roc) %>% 
+  ggplot() +
+  aes(x = 1 - specificity, y = sensitivity, color = id2) +
+  geom_path() +
+  geom_abline(lty = 3) + facet_wrap(~id)
+# COMMENT ON THIS
+
+# Inspecting performance metrics
+eval %>% 
+  select(repeat_n = id, fold_n = id2, metric = .metric, estimate = .estimate) %>% 
+  spread(metric, estimate) %>% arrange(desc(kap)) %>% 
+  summarise(N = n(),
+  m_accuracy = mean(accuracy),
+  m_kap = mean(kap),
+  m_mn_log_loss = mean(mn_log_loss),
+  m_roc_auc = mean(roc_auc)
+  )
 
 ```
 
